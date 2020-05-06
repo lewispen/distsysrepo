@@ -1,0 +1,272 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+
+namespace DistSysACWClient
+{
+    #region Task 10 and beyond
+    class Client
+    {
+        public class User
+        {
+            public string ApiKey { get; set; }
+            public string UserName { get; set; }
+            public string Role { get; set; }
+
+        }
+
+        static HttpClient client = new HttpClient();
+
+        static User user = new User();
+
+        static void Main(string[] args)
+        {
+            PreRunner();
+            Console.ReadKey();
+        }
+
+        public static void PreRunner()
+        {
+            int completeRequests = 0;
+            while (true)
+            {
+                if (completeRequests == 0)
+                {
+                    Console.WriteLine("Hello. What would you like to do?");
+                }
+                else
+                {
+                    Console.WriteLine("What would you like to do next?");
+                }
+
+                string userInput = Console.ReadLine();
+                Console.Clear();
+                string requestString = "";
+                switch (userInput)
+                {
+                    case "TalkBack Hello":
+                        requestString = "api/talkback/hello";
+                        RunAsync(requestString, "Get", completeRequests, "", null).Wait();
+                        break;
+
+                    case string a when a.Contains("TalkBack Sort"):
+                        string numbersToSplit = userInput.Split('[', ']')[1];
+                        string[] numbers = numbersToSplit.Split(',');
+                        string appendString = null;
+                        for (int i = 0; i < numbers.Count(); i++)
+                        {
+                            if (i == numbers.Count() - 1)
+                            {
+                                appendString += "integers=" + numbers[i];
+                            }
+                            else
+                            {
+                                appendString += "integers=" + numbers[i] + "&";
+                            }
+                        }
+                        requestString = ("api/talkback/sort?" + appendString);
+                        RunAsync(requestString, "Get", completeRequests, "", null).Wait();
+                        break;
+
+                    case string a when a.Contains("User Get"):
+                        string getSplit = userInput.Split(' ')[2];
+                        requestString = ("api/user/new?username=" + getSplit);
+                        RunAsync(requestString, "Get", completeRequests, "", null).Wait();
+                        break;
+
+                    case string a when a.Contains("User Post"):
+                        string postSplit = userInput.Split(' ')[2];
+                        requestString = ("api/user/new");
+                        RunAsync(requestString, "Post", completeRequests, postSplit, null).Wait();
+                        break;
+
+                    case string a when a.Contains("User Set"):
+                        string[] setSplit = userInput.Split(' ');
+                        SetString(setSplit);
+                        break;
+
+                    case string a when a.Contains("User Delete"):
+                        if (user.UserName == null || user.ApiKey == null)
+                        {
+                            Console.WriteLine("You need to do a User Post or User Set first.");
+                            break;
+                        }
+                        else
+                        {
+                            requestString = "api/user/removeuser?username=" + user.UserName;
+                            RunAsync(requestString, "Delete", completeRequests, "", null).Wait();
+                            break;
+                        }
+
+                    case string a when a.Contains("User Role"):
+                        //split input to get username and role
+                        string[] roleSplit = userInput.Split(' ');
+                        requestString = "api/user/changerole";
+                        RunAsync(requestString, "BodyGet", completeRequests, "", roleSplit).Wait();
+                        break;
+
+                    case "Protected Hello":
+                        break;
+
+                    case string a when a.Contains("Protected SHA1"):
+                        break;
+
+                    case string a when a.Contains("Protected SHA256"):
+                        break;
+
+                    case "Exit":
+                        break;
+
+                    default:
+                        Console.WriteLine("Please enter a valid command");
+                        break;
+                }
+                if (userInput == "Exit")
+                {
+                    break;
+                }
+                else
+                {
+                    completeRequests += 1;
+                    continue;
+                }
+            }
+        }
+
+        static async Task RunAsync(string requestString, string requestType, int requests, string content, string[] multicontent)
+        {
+
+            Console.WriteLine("...please wait...");
+            if (requests == 0)
+            {
+                client.BaseAddress = new Uri("https://localhost:44307/");
+            }
+            try
+            {
+                //Can only handle requests with content in URI
+                if (requestType == "Get")
+                {
+                    Task<string> task = GetStringAsync(requestString);
+                    if (await Task.WhenAny(task, Task.Delay(20000)) == task) { Console.WriteLine(task.Result); }
+                    else { Console.WriteLine("Request Timed Out"); }
+                }
+                else if (requestType == "Post")
+                {
+                    Task<string> task = CreateStringAsync(requestString, content, user);
+                    if (await Task.WhenAny(task, Task.Delay(20000)) == task) { Console.WriteLine(task.Result); }
+                    else { Console.WriteLine("Request Timed Out"); }
+                }
+                else if (requestType == "Delete")
+                {
+                    requests = 0;
+                    Task<bool> task = DeleteAsync(requestString);
+                    if (await Task.WhenAny(task, Task.Delay(20000)) == task) { Console.WriteLine(task.Result); }
+                    else { Console.WriteLine("Request Timed Out"); }
+                }
+                //Made to handle User Role request which uses body content
+                else if (requestType == "BodyGet")
+                {
+                    requests = 0;
+                    Task<string> task = RoleAsync(requestString, multicontent);
+                    if (await Task.WhenAny(task, Task.Delay(20000)) == task) { Console.WriteLine(task.Result); }
+                    else { Console.WriteLine("Request Timed Out"); }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.GetBaseException().Message);
+            }
+        }
+
+        static async Task<string> GetStringAsync(string path)
+        {
+            string responsestring = "";
+            HttpResponseMessage response = await client.GetAsync(path);
+            responsestring = await response.Content.ReadAsStringAsync();
+            return responsestring;
+        }
+
+        static async Task<string> CreateStringAsync(string path, string content, User user)
+        {
+            //Body Content
+            HttpContent contentr = new StringContent("\"" + content + "\"", Encoding.UTF8, "application/json");
+            var request = client.PostAsync(path, contentr);
+            HttpResponseMessage response = await request;
+            string responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.StatusCode.Equals(HttpStatusCode.OK))
+            {
+                //set user stuff
+                user.ApiKey = responseBody;
+                user.UserName = content;
+                return ("GOT API KEY");
+            }
+            else
+            {
+                return (responseBody);
+            }
+        }
+        static void SetString(string[] content)
+        {
+            user.ApiKey = content[3];
+            user.UserName = content[2];
+            Console.WriteLine("Stored");
+        }
+
+        static async Task<bool> DeleteAsync(string path)
+        {
+            var request = new HttpRequestMessage()
+            {
+                RequestUri = new Uri("https://localhost:44307/" + path),
+                Method = HttpMethod.Delete,
+            };
+            string apikey = user.ApiKey;
+            client.DefaultRequestHeaders.Add("ApiKey", apikey);
+            //request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("ApiKey"));
+            HttpResponseMessage response = await client.SendAsync(request);
+            
+            if (response.StatusCode.Equals(HttpStatusCode.OK))
+            {
+                //set user stuff
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        static async Task<string> RoleAsync(string path, string[] content)
+        {
+            if (user.ApiKey == null)
+            {
+                return ("You need to do a User Post or User Set first");
+            }
+            else
+            {
+                //Set Header
+                //LOOK UP HOW TO SEND CUSTOM HEADER AND BODY CONTENT AT THE SAME TIME
+                string apikey = user.ApiKey;
+                client.DefaultRequestHeaders.Add("ApiKey", apikey);
+                HttpContent contentr = new StringContent("\"" + content + "\"", Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await client.PostAsync("https://localhost:44307/" + path, contentr);
+                string responseBody = await response.Content.ReadAsStringAsync();
+                return (responseBody);
+            }
+            
+            
+        }
+    }
+    //Body Content
+    //HttpContent contentr = new StringContent("\"" + "{" + "'username'" + ":" + "'<username>'" + "," + "'role'" + ":" + "'<role>'" + "}" + "\"", Encoding.UTF8, "application/json");
+    #endregion
+}

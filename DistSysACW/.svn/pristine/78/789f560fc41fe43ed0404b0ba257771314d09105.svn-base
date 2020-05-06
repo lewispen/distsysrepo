@@ -1,0 +1,77 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace DistSysACW.Controllers
+{
+    [ApiController]
+    [Route("api/[Controller]/[Action]")]
+    public class ProtectedController : BaseController
+    {
+        public ProtectedController(Models.UserContext context) : base(context) { }
+
+        [ActionName("Hello")]
+        [HttpGet]
+        public ActionResult ProtectedGetUser()
+        {
+            #region TASK4
+            string type = "ApiKey";
+            Request.Headers.TryGetValue(type, out var value);
+            try
+            {
+                string vSplit = value.ToString();
+                string ProtKey = Models.UserDatabaseAccess.GetTrueKey(vSplit);
+                var userObject = Models.UserDatabaseAccess.GetUserObj(ProtKey);
+                string result = userObject.UserName;
+                return Ok("Hello " + result);
+            }
+            catch
+            {
+                return Ok("You need to do a User Post or User Set first");
+            } 
+            
+            #endregion
+        }
+
+        [ActionName("SHA1")]
+        [HttpGet]
+        public ActionResult ProtectedSha1([FromQuery]string message)
+        {
+            #region TASK4
+            string type = "1";
+            if (message != null)
+            {
+                string result = Models.UserDatabaseAccess.hashConverter(type, message);
+                return Ok(result);
+            }
+            else
+            {
+                return BadRequest();
+            }
+            
+            #endregion
+        }
+
+        [ActionName("SHA256")]
+        [HttpGet]
+        public ActionResult ProtectedSha256([FromQuery]string message)
+        {
+            #region TASK4
+            string type = "256";
+            if (message != null)
+            {
+                string result = Models.UserDatabaseAccess.hashConverter(type, message);
+                return Ok(result);
+            }
+            else
+            {
+                return BadRequest();
+            }
+            #endregion
+        }
+
+    }
+}

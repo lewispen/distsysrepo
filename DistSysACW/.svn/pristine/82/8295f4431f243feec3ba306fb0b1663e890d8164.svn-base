@@ -1,0 +1,166 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using CoreExtensions;
+
+namespace DistSysACW.Controllers
+{
+    [ApiController]
+    [Route("api/[Controller]/[Action]")]
+    public class ProtectedController : BaseController
+    {
+        public ProtectedController(Models.UserContext context) : base(context) { }
+
+        [ActionName("Hello")]
+        [HttpGet]
+        public ActionResult ProtectedGetUser()
+        {
+            #region TASK4
+            string type = "ApiKey";
+            Request.Headers.TryGetValue(type, out var value);
+            try
+            {
+                string vSplit = value.ToString();
+                string ProtKey = Models.UserDatabaseAccess.GetTrueKey(vSplit);
+                var userObject = Models.UserDatabaseAccess.GetUserObj(ProtKey);
+                string result = userObject.UserName;
+                return Ok("Hello " + result);
+            }
+            catch
+            {
+                return Ok("You need to do a User Post or User Set first");
+            } 
+            
+            #endregion
+        }
+
+        [ActionName("SHA1")]
+        [HttpGet]
+        public ActionResult ProtectedSha1([FromQuery]string message)
+        {
+            #region TASK4
+            string type = "1";
+            string[] checkMessage = message.Split(" ");
+            if (checkMessage.Length >= 3)
+            {
+                string result = Models.UserDatabaseAccess.hashConverter(type, message);
+                return Ok(result);
+            }
+            else
+            {
+                return BadRequest("Bad Request");
+            }
+            
+            #endregion
+        }
+
+        [ActionName("SHA256")]
+        [HttpGet]
+        public ActionResult ProtectedSha256([FromQuery]string message)
+        {
+            #region TASK4
+            string type = "256";
+            string[] checkMessage = message.Split(" ");
+            if (checkMessage.Length >= 3)
+            {
+                string result = Models.UserDatabaseAccess.hashConverter(type, message);
+                return Ok(result);
+            }
+            else
+            {
+                return BadRequest("Bad Request");
+            }
+            #endregion
+        }
+
+        [ActionName("GetPublicKey")]
+        [HttpGet]
+        public ActionResult PublicKeyRequest()
+        {
+            string type = "ApiKey";
+            Request.Headers.TryGetValue(type, out var value);
+            var userObject = Models.UserDatabaseAccess.GetUserObj(value);
+            //User with apiKey exists
+            if (userObject != null)
+            {
+                //This only sends the Public key, changing it to true exports both public and private
+                return Ok(RSAClass.RSAKeys.ToXmlStringCore22(false));
+            }
+            else
+            {
+                return BadRequest();
+            }
+        }
+
+        
+        internal class RSAClass
+        {
+            private static RSAClass RSA;
+            public static RSACryptoServiceProvider RSAKeys = new RSACryptoServiceProvider();
+            private RSAClass()
+            {
+                RSACryptoServiceProvider.UseMachineKeyStore = true;
+            }
+
+            public static RSAClass createInstance()
+            {
+                if (RSA == null)
+                {
+                    RSA = new RSAClass();
+                }
+                return RSA;
+            }
+
+            static public byte[] RSAEncrypt(byte[] DataToEncrypt, RSAParameters RSAKeyInfo, bool DoOAEPPadding)
+            {
+                try
+                {
+                    byte[] encryptedData;
+
+                    using (RSACryptoServiceProvider RSA = new RSACryptoServiceProvider())
+                    {
+                        RSA.ImportParameters(RSAKeyInfo);
+
+                        encryptedData = RSA.Encrypt(DataToEncrypt, DoOAEPPadding);
+                    }
+                    return encryptedData;
+                }
+                catch(CryptographicException e)
+                {
+                    Console.WriteLine(e.Message);
+
+                    return null;
+                }
+            }
+
+            public static byte[] RSADecrypt(byte[] DataToDecrypt, RSAParameters RSAKeyInfo, bool DoOAEPPadding)
+            {
+                try
+                {
+                    byte[] decryptedData;
+
+                    using (RSACryptoServiceProvider RSA = new RSACryptoServiceProvider())
+                    {
+                        RSA.ImportParameters(RSAKeyInfo);
+
+                        decryptedData = RSA.Decrypt(DataToDecrypt, DoOAEPPadding);
+                    }
+
+                    return decryptedData;
+                }
+                catch (CryptographicException e)
+                {
+                    Console.WriteLine(e.ToString());
+
+                    return null;
+                }
+            }
+
+        }
+    }
+    
+}

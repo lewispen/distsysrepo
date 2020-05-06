@@ -1,0 +1,70 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace DistSysACW.Filters
+{
+    public class AuthFilter : AuthorizeAttribute, IAuthorizationFilter
+    {
+        public void OnAuthorization(AuthorizationFilterContext context)
+        {
+            try
+            {
+                AuthorizeAttribute authAttribute = (AuthorizeAttribute)context.ActionDescriptor.EndpointMetadata.Where(e => e.GetType() == typeof(AuthorizeAttribute)).FirstOrDefault();
+
+                if (authAttribute != null)
+                {
+                    string[] roles = authAttribute.Roles.Split(',');
+                    int i = 0;
+                    foreach (string role in roles)
+                    {
+                        i += 1;
+                        //Admin permission
+                        if (roles.Length <= 1)
+                        {
+                            if (context.HttpContext.User.IsInRole(role))
+                            {
+                                return;
+                            }
+                            else
+                            {
+                                context.HttpContext.Response.StatusCode = 401;
+                                context.Result = new JsonResult("Unauthorized. Admin access only.");
+                            }
+                        }
+                        else
+                        {
+                            // User or Admin permission
+                            if (context.HttpContext.User.IsInRole(role))
+                            {
+                                return;
+                            }
+                            //If its less than 2 we dont want to send a message yet
+                            //There are still some more roles to check
+                            else if (i < 2 )
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                context.HttpContext.Response.StatusCode = 401;
+                                context.Result = new JsonResult("Unauthorized.");
+                            }
+                        }
+                        
+                    }
+                }
+            }
+            catch
+            {
+                context.HttpContext.Response.StatusCode = 401;
+                context.Result = new JsonResult("Unauthorized. Check ApiKey in Header is correct.");
+            }
+        }
+    }
+}
